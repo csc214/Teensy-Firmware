@@ -35,36 +35,68 @@
 #define DELIM   " OK\n"  // Delimiter for returning messages from teensy
 #define EDELIM  " ERR\n" // Delimiter for returning an error message
 
-// I'll find a better way to do this... probably
-char* comm_list[] = {"XFRAME", (char*) 10,
-                     "YFRAME", (char*) 20,
-                     "CCDPX",  (char*) 30,
-                     "CCDPY",  (char*) 40,
-                     "CCDT",   (char*) 50,
-                     "VER?",   (char*) 60,
-                     "XSEC?",  (char*) 70,
-                     "XMSEC?", (char*) 80,
-                     "XSIZE?", (char*) 90,
-                     "YSIZE?", (char*) 100,
-                     "XOFFS?", (char*) 110,
-                     "YOFFS?", (char*) 120,
-                     "XBIN?",  (char*) 130,
-                     "YBIN?",  (char*) 140,
-                     "XSEC",   (char*) 150,
-                     "XMSEC",  (char*) 160,
-                     "XSIZE",  (char*) 170,
-                     "YSIZE",  (char*) 180,
-                     "XOFFS",  (char*) 190,
-                     "YOFFS",  (char*) 200,
-                     "XBIN",   (char*) 210,
-                     "YBIN",   (char*) 220,
-                     "EXPOSE", (char*) 230,
-                     "FLUSH",  (char*) 240,
-                     "GRIMG",  (char*) 250,
-                     "TEST",   (char*) 260};
+#define NCOMMS 26  // Number of commands available
+
+typedef struct {
+  String name;
+  short id;
+} comm_t;
+
+int xsize, ysize, xoffs, yoffs; // AOI vars
+int xbin, ybin;                 // Binning vars
+int xsec, xmsec;                // Exposure vars
+
+
+comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
+                      {.name="YFRAME", .id=20},
+                      {.name="CCDPX",  .id=30},
+                      {.name="CCDPY",  .id=40},
+                      {.name="CCDT",   .id=50},
+                      {.name="VER?",   .id=60},
+                      {.name="XSEC?",  .id=70},
+                      {.name="XMSEC?", .id=80},
+                      {.name="XSIZE?", .id=90},
+                      {.name="YSIZE?", .id=100},
+                      {.name="XOFFS?", .id=110},
+                      {.name="YOFFS?", .id=120},
+                      {.name="XBIN?",  .id=130},
+                      {.name="YBIN?",  .id=140},
+                      {.name="XSEC",   .id=150},
+                      {.name="XMSEC",  .id=160},
+                      {.name="XSIZE",  .id=170},
+                      {.name="YSIZE",  .id=180},
+                      {.name="XOFFS",  .id=190},
+                      {.name="YOFFS",  .id=200},
+                      {.name="XBIN",   .id=210},
+                      {.name="YBIN",   .id=220},
+                      {.name="EXPOSE", .id=230},
+                      {.name="FLUSH",  .id=240},
+                      {.name="GRIMG",  .id=250},
+                      {.name="TEST",   .id=260}
+                     };
 
 char  input_string[200];
 char* stend = input_string;
+
+void handle_comms() {
+  int comm_id;
+  for (int i = 0; i < NCOMMS; i++) {
+    // When comparing a ``String`` to a ``char*`` put the string first to use the compare operator (``==``)
+    if (comm_list[i].name == input_string){
+      comm_id = comm_list[i].id;
+      break;
+    }
+  }
+  switch (comm_id) {
+    case 260:
+      Serial.write("42");
+      Serial.write(DELIM);
+      break;
+    default:
+      Serial.write(EDELIM);
+  }
+  input_string[0] = 0x00;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -74,37 +106,20 @@ void setup() {
 }
 
 void loop() {
-  GPIOC_PDOR ^= 0b00100000;
-  delay(500);
-  GPIOC_PDOR ^= 0b00100000;
-  
-  while(1){
-      if (input_string[0]){
-          handle_comms();
-        }
-    }
+  while (1) {
+    GPIOC_PTOR = 32;  // Pointlessly toggle LED
+    delay(500);
+    GPIOC_PTOR = 32;
+    delay(500);
+  }
 
 }
 
-void handle_comms(){
-      int comm_id;
-      for (int i = 0; i < 26; i += 2){
-          if (comm_list[i] == input_string) comm_id = (int)(comm_list[i + 1]);
-        }
-      switch(comm_id){
-          case 260:
-            Serial.write("42");
-            Serial.write(DELIM);
-            break;
-          default:
-            Serial.write(EDELIM);
-        }
-    input_string[0] = 0x00;
+void serialEvent() {
+  while (Serial.available()) {
+    *(stend++) = (char)Serial.read();
   }
-
-void serialEvent(){
-    while (Serial.available()){
-        *stend++ = (char)Serial.read();
-      }
-      stend = input_string;
-  }
+  *(stend++) = 0x00; // 0-delimiter
+  stend = input_string;
+  handle_comms();
+}
