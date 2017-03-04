@@ -35,6 +35,15 @@
 #define DELIM   " OK\n"  // Delimiter for returning messages from teensy
 #define EDELIM  " ERR\n" // Delimiter for returning an error message
 
+
+#define WIDTH  768 // Resolution for KAI-0370C
+#define HEIGHT 484
+#define XPITCH  78 // Horizontal Pixel Pitch (px/mm)
+#define YPITCH  63 // Vertical Pixel Pitch (px/mm)
+#define CCDTYPE  2 // CCD Type for KAI-0370C
+
+#define VERSION  "0.0.1"
+
 #define NCOMMS 26  // Number of commands available
 
 typedef struct {
@@ -75,11 +84,23 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="TEST",   .id=260}
                      };
 
-char  input_string[200];
+char  input_string[1024];
 char* stend = input_string;
 
 void handle_comms() {
+  if (input_string[0] == 0x00){
+      Serial.write(DELIM);
+      return;
+    }
   int comm_id;
+  char* param = NULL; // Pointer to start of parameter.
+  for (int i = 0; i < 200; i++){
+      if (input_string[i] == ' '){
+          input_string[i] = 0x00;     // Null-terminate command.
+          param = input_string + i + 1;
+        }
+    }
+  
   for (int i = 0; i < NCOMMS; i++) {
     // When comparing a ``String`` to a ``char*`` put the string first to use the compare operator (``==``)
     if (comm_list[i].name == input_string){
@@ -87,14 +108,129 @@ void handle_comms() {
       break;
     }
   }
+  char response[1024];
   switch (comm_id) {
-    case 260:
-      Serial.write("42");
-      Serial.write(DELIM);
+    case XFRAME:
+      itoa(WIDTH, response, 10);
+      Serial.write(response);
+      break;
+    case YFRAME:
+      itoa(HEIGHT, response, 10);
+      Serial.write(response);
+      break;
+    case CCDPX:
+      itoa(XPITCH, response, 10);
+      Serial.write(response);
+      break;
+    case CCDPY:
+      itoa(YPITCH, response, 10);
+      Serial.write(response);
+      break;
+    case CCDT:
+      itoa(CCDTYPE, response, 10);
+      Serial.write(response);
+      break;
+    case VERQ:
+      Serial.write(VERSION);
+      break;
+    case XSECQ:
+      itoa(xsec, response, 10);
+      Serial.write(response);
+      break;
+    case XMSECQ:
+      itoa(xmsec, response, 10);
+      Serial.write(response);
+      break;
+    case XSIZEQ:
+      itoa(xsize, response, 10);
+      Serial.write(response);
+      break;
+    case YSIZEQ:
+      itoa(ysize, response, 10);
+      Serial.write(response);
+      break;
+    case XOFFSQ:
+      itoa(xoffs, response, 10);
+      Serial.write(response);
+      break;
+    case YOFFSQ:
+      itoa(yoffs, response, 10);
+      Serial.write(response);
+      break;
+    case XBINQ:
+      itoa(xbin, response, 10);
+      Serial.write(response);
+      break;
+    case YBINQ:
+      itoa(ybin, response, 10);
+      Serial.write(response);
+      break;
+    case XSEC:
+      xsec = atoi(param);
+      break;
+    case XMSEC:
+      xmsec = atoi(param);
+      break;
+    case XSIZE:
+      if (atoi(param) <= 0 || atoi(param) > WIDTH){
+          Serial.write(EDELIM);
+          return;
+        }
+      xsize = atoi(param);
+      break;
+    case YSIZE:
+      if (atoi(param) <= 0 || atoi(param) > HEIGHT){
+        Serial.write(EDELIM);
+        return;
+        }
+      ysize = atoi(param);
+      break;
+    case XOFFS:
+      if (atoi(param) < 0 || atoi(param) > WIDTH){
+          Serial.write(EDELIM);
+          return;
+        }
+      xoffs = atoi(param);
+      break;
+    case YOFFS:
+      if (atoi(param) < 0 || atoi(param) > HEIGHT){
+          Serial.write(EDELIM);
+          return;
+        }
+      yoffs = atoi(param);
+      break;
+    case XBIN:
+      if (atoi(param) < 0){
+          Serial.write(EDELIM);
+          return;
+        }
+      xbin = atoi(param);
+      break;
+    case YBIN:
+      if (atoi(param) < 0){
+          Serial.write(EDELIM);
+          return;
+        }
+      ybin = atoi(param);
+      break;
+
+    //TODO: Fill in these functions
+    case EXPOSE:
+      break;
+    case FLUSH:
+      break;
+    case GRIMG:
+      break;
+    
+    case TEST:
+      if (*param) Serial.write(param);
+      else Serial.write("42");
       break;
     default:
       Serial.write(EDELIM);
+      return;
   }
+  Serial.write(DELIM);
   input_string[0] = 0x00;
 }
 
@@ -103,6 +239,12 @@ void setup() {
   pinMode(13, OUTPUT);
   GPIOC_PDOR = 1;         // Set PORTD to output
 
+  // Setup operating variables.
+  xsize = WIDTH; ysize = HEIGHT;
+  xoffs = yoffs = 0;
+  xsec = 30;
+  xmsec = 0;
+  xbin = ybin = 1;
 }
 
 void loop() {
@@ -119,7 +261,7 @@ void serialEvent() {
   while (Serial.available()) {
     *(stend++) = (char)Serial.read();
   }
-  *(stend++) = 0x00; // 0-delimiter
+  *(--stend) = 0x00; // replace the newline with a zero-delimiter
   stend = input_string;
   handle_comms();
 }
