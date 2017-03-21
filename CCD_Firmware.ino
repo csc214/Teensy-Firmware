@@ -210,33 +210,53 @@ void setup() {
 void expose() {
   noInterrupts();
   flusher();
-  //v1_v2 = 0
+  GPIOD_PSOR |= 0b100; //v1 low
   delay(xsec*1000 + xmsec);
   interrupts(); 
 }
 void flusher() {
-  GPIOD_PSOR |= 0b100; //v1_v2
+  GPIOC_PSOR |= 0b1000; //clamp on
+  GPIOD_PSOR &= 0b0111; //h1 low
+  GPIOD_PSOR |= 0b100; //v1 low
   delayMicroseconds(63);
-  GPIOC_PSOR |= 0b10000;
-  delayMicroseconds(17);
+  GPIOC_PTOR |= 0b10000; //even shift, maybe not a toggle
+  delayMicroseconds(17);//t_VH
   GPIOC_PTOR = 0b10000;
-  delayMicroseconds(63);//random choice
-  for (int c = 0; c < 33; c++) {
-    for (int a = 0; a < 8; a++) { GPIOD_PTOR = 0b100; delayMicroseconds(3); GPIOD_PTOR = 0b100; delayMicroseconds(60); }
-    for (int b = 0; b < 99; b++) {
-      for (int a = 0; a < 8; a++) { /*h toggle*/ }
-      //clamp toggle
+  delayMicroseconds(63);//arbitrary delay
+  GPIOD_PTOR = 0b100;
+  delayMicroseconds(63);//another arbitrary delay
+  for (int c = 0; c < 248; c++) {
+    GPIOD_PTOR = 0b100; //vertical shift
+    delayMicroseconds(50); 
+    GPIOD_PTOR = 0b100; 
+    delayMicroseconds(10); 
+
+    for (int b = 0; b < 780; b++) {
+      GPIOD_PTOR = 0b1000; //horizontal shift
+      delayMicroseconds(5); 
+      GPIOD_PTOR = 0b1000;
+      delayMicroseconds(5);
     }
   }
-  //v1v2 = 1
-  //ft = 1
-  //wait
-  //ft = 0
-  for (int c = 0; c < 33; c++) {
-    for (int a = 0; a < 8; a++) { /*v1v2 toggle*/ }
-    for (int b = 0; b < 99; b++) {
-      for (int a = 0; a < 8; a++) { /*h toggle*/ }
-      //clamp toggle
+  GPIOD_PTOR = 0b100;
+  delayMicroseconds(63);
+  GPIOC_PTOR |= 0b10000; //odd shift
+  delayMicroseconds(17);//t_VH
+  GPIOC_PTOR = 0b10000;
+  delayMicroseconds(63);//arbitrary delay
+  GPIOD_PTOR = 0b100;
+  delayMicroseconds(63);//another arbitrary delay
+  for (int c = 0; c < 247; c++) {
+    GPIOD_PTOR = 0b100; //vertical shift
+    delayMicroseconds(50); 
+    GPIOD_PTOR = 0b100; 
+    delayMicroseconds(10); 
+
+    for (int b = 0; b < 780; b++) {
+      GPIOD_PTOR = 0b1000; //horizontal shift
+      delayMicroseconds(5); 
+      GPIOD_PTOR = 0b1000;
+      delayMicroseconds(5);
     }
   }
 }
