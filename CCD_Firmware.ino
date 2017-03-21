@@ -1,4 +1,11 @@
-  #include "proto.h"
+//GPIOx_PSOR - set output reg
+//GPIOx_PDDR - data direction reg
+//GPIOx_PTOR - toggle output reg
+
+#include "proto.h"
+
+//when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds
+#define N5DELAY asm volatile( "nop\n" )
 
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
@@ -165,12 +172,16 @@ void handle_comms() {
 
     //TODO: Fill in these functions
     case EXPOSE:
+      expose();
       break;
     case FLUSH:
+      flusher();
       break;
     case GRIMG:
+      flusher();
+      expose();
+      grimg();
       break;
-    
     case TEST:
       if (*param) Serial.write(param);
       else Serial.write("42");
@@ -194,6 +205,45 @@ void setup() {
   xsec = 30;
   xmsec = 0;
   xbin = ybin = 1;
+}
+
+void expose() {
+  noInterrupts();
+  flusher();
+  //v1_v2 = 0
+  delay(xsec*1000 + xmsec);
+  interrupts(); 
+}
+void flusher() {
+  GPIOD_PSOR |= 0b100; //v1_v2
+  delayMicroseconds(63);
+  GPIOC_PSOR |= 0b10000;
+  delayMicroseconds(17);
+  GPIOC_PTOR = 0b10000;
+  delayMicroseconds(63);//random choice
+  for (int c = 0; c < 33; c++) {
+    for (int a = 0; a < 8; a++) { GPIOD_PTOR = 0b100; delayMicroseconds(3); GPIOD_PTOR = 0b100; delayMicroseconds(60); }
+    for (int b = 0; b < 99; b++) {
+      for (int a = 0; a < 8; a++) { /*h toggle*/ }
+      //clamp toggle
+    }
+  }
+  //v1v2 = 1
+  //ft = 1
+  //wait
+  //ft = 0
+  for (int c = 0; c < 33; c++) {
+    for (int a = 0; a < 8; a++) { /*v1v2 toggle*/ }
+    for (int b = 0; b < 99; b++) {
+      for (int a = 0; a < 8; a++) { /*h toggle*/ }
+      //clamp toggle
+    }
+  }
+}
+void grimg() {
+  noInterrupts();
+  //791 columns, 262 odd rows, 263 even rows
+  interrupts();
 }
 
 void loop() {
