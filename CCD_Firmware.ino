@@ -1,11 +1,20 @@
-//GPIOx_PSOR - set output reg
-//GPIOx_PDDR - data direction reg
-//GPIOx_PTOR - toggle output reg
+/*
+ *GPIOx_PSOR - set output reg
+ *GPIOx_PDDR - data direction reg
+ *GPIOx_PTOR - toggle output reg
+ *
+ *  Pin     8  7     2     9 10
+ *  Port   D3 D2 D1 D0    C3 C4
+ *          H  V     R     C  F
+ */
+
 
 #include "proto.h"
 
 //when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds
 #define N5DELAY asm volatile( "nop\n" )
+#define VERTICLE_TOGGLE GPIOD_PTOR = 0b100
+
 
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
@@ -215,46 +224,49 @@ void expose() {
   interrupts(); 
 }
 void flusher() {
-  GPIOC_PSOR |= 0b1000; //clamp on
-  GPIOD_PSOR &= 0b0111; //h1 low
-  GPIOD_PSOR |= 0b100; //v1 low
-  delayMicroseconds(63);
-  GPIOC_PTOR |= 0b10000; //even shift, maybe not a toggle
-  delayMicroseconds(17);//t_VH
-  GPIOC_PTOR = 0b10000;
-  delayMicroseconds(63);//arbitrary delay
-  GPIOD_PTOR = 0b100;
-  delayMicroseconds(63);//another arbitrary delay
+  GPIOD_PSOR &= 0xFFFFFFFB;       //h1 low
+  GPIOD_PSOR |= 0b100;            //v2 high
+  delayMicroseconds(63);          
+  GPIOC_PTOR = 0b10000;           //even shift
+  delayMicroseconds(17);          //t_VH
+  GPIOC_PTOR = 0b10000;           
+  delayMicroseconds(126);          //arbitrary delay before shift
+  
   for (int c = 0; c < 248; c++) {
-    GPIOD_PTOR = 0b100; //vertical shift
-    delayMicroseconds(50); 
-    GPIOD_PTOR = 0b100; 
-    delayMicroseconds(10); 
+    VERTICLE_TOGGLE; //vertical shift
+    delayMicroseconds(50);//t_V 
+    VERTICLE_TOGGLE; 
+    delayMicroseconds(10);//t_HD
 
     for (int b = 0; b < 780; b++) {
-      GPIOD_PTOR = 0b1000; //horizontal shift
-      delayMicroseconds(5); 
+      GPIOD_PTOR = 0b1001; //horizontal shift
+      delayMicroseconds(1);
+      GPIOD_PTOR = 0b0001; //reset off
+      delayMicroseconds(4); 
       GPIOD_PTOR = 0b1000;
       delayMicroseconds(5);
     }
   }
-  GPIOD_PTOR = 0b100;
+  VERTICLE_TOGGLE;
   delayMicroseconds(63);
   GPIOC_PTOR |= 0b10000; //odd shift
   delayMicroseconds(17);//t_VH
   GPIOC_PTOR = 0b10000;
-  delayMicroseconds(63);//arbitrary delay
-  GPIOD_PTOR = 0b100;
-  delayMicroseconds(63);//another arbitrary delay
+  delayMicroseconds(63);          //arbitrary delay before shift
+  VERTICLE_TOGGLE;
+  delayMicroseconds(63);          //another arbitrary delay
+    
   for (int c = 0; c < 247; c++) {
-    GPIOD_PTOR = 0b100; //vertical shift
-    delayMicroseconds(50); 
-    GPIOD_PTOR = 0b100; 
-    delayMicroseconds(10); 
+    VERTICLE_TOGGLE; //vertical shift
+    delayMicroseconds(50);//t_v 
+    VERTICLE_TOGGLE; 
+    delayMicroseconds(10);//t_HD 
 
     for (int b = 0; b < 780; b++) {
-      GPIOD_PTOR = 0b1000; //horizontal shift
-      delayMicroseconds(5); 
+      GPIOD_PTOR = 0b1001; //horizontal shift
+      delayMicroseconds(1);
+      GPIOD_PTOR = 0b0001; //reset off
+      delayMicroseconds(4); 
       GPIOD_PTOR = 0b1000;
       delayMicroseconds(5);
     }
