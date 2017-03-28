@@ -224,7 +224,7 @@ void expose() {
   interrupts(); 
 }
 void flusher() {
-  GPIOD_PSOR &= 0xFFFFFFFB;       //h1 low
+  GPIOD_PSOR &= 0xFFFFFFFB;       //h1 low  1011
   GPIOD_PSOR |= 0b100;            //v2 high
   delayMicroseconds(63);          
   GPIOC_PTOR = 0b10000;           //even shift
