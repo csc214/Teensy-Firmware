@@ -245,7 +245,10 @@ void flusher() {
       delayMicroseconds(5);
     }
     
-  if (POLL_ENDRUN) return;
+  if (POLL_ENDRUN){
+      VERTICLE_TOGGLE;
+      return;
+    }
   }
   VERTICLE_TOGGLE;
   delayMicroseconds(63);
@@ -270,8 +273,12 @@ void flusher() {
       GPIOD_PTOR = 0b1000;
       delayMicroseconds(5);
     }
-  if (POLL_ENDRUN) return;
+  if (POLL_ENDRUN){
+      VERTICLE_TOGGLE;
+      return;
+    }
   }
+  VERTICLE_TOGGLE;
   interrupts();
 }
 void grimg() {
