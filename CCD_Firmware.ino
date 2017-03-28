@@ -2,10 +2,16 @@
 //GPIOx_PDDR - data direction reg
 //GPIOx_PTOR - toggle output reg
 
+#include <avr/io.h> // Interrupt Vector Definitions
+#include <avr/interrupt.h> // Interrupt Function Definitions
+#include <util/atomic.h>
+
 #include "proto.h"
 
 //when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds
 #define N5DELAY asm volatile( "nop\n" )
+
+#define POLL_ENDRUN (GPIOA_PDIR & 0x10000)
 
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
@@ -194,30 +200,23 @@ void handle_comms() {
   input_string[0] = 0x00;
 }
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(13, OUTPUT);
-  GPIOC_PDOR = 1;         // Set PORTD to output
-
-  // Setup operating variables.
-  xsize = WIDTH; ysize = HEIGHT;
-  xoffs = yoffs = 0;
-  xsec = 30;
-  xmsec = 0;
-  xbin = ybin = 1;
-}
-
 void expose() {
   noInterrupts();
   flusher();
   GPIOD_PSOR |= 0b100; //v1 low
-  delay(xsec*1000 + xmsec);
+  int xtime = (xsec * 1000) + xmsec;
+  while(!POLL_ENDRUN && xtime){
+      delayMicroseconds(1000);
+      xtime -= 1;
+    }
+    
   interrupts(); 
 }
 void flusher() {
+  noInterrupts();
   GPIOC_PSOR |= 0b1000; //clamp on
   GPIOD_PSOR &= 0b0111; //h1 low
-  GPIOD_PSOR |= 0b100; //v1 low
+  GPIOD_PSOR |= 0b100;  //v1 high
   delayMicroseconds(63);
   GPIOC_PTOR |= 0b10000; //even shift, maybe not a toggle
   delayMicroseconds(17);//t_VH
@@ -237,6 +236,8 @@ void flusher() {
       GPIOD_PTOR = 0b1000;
       delayMicroseconds(5);
     }
+    
+  if (POLL_ENDRUN) return;
   }
   GPIOD_PTOR = 0b100;
   delayMicroseconds(63);
@@ -258,7 +259,9 @@ void flusher() {
       GPIOD_PTOR = 0b1000;
       delayMicroseconds(5);
     }
+  if (POLL_ENDRUN) return;
   }
+  interrupts();
 }
 void grimg() {
   noInterrupts();
@@ -266,14 +269,47 @@ void grimg() {
   interrupts();
 }
 
-void loop() {
-  while (1) {
-    GPIOC_PTOR = 32;  // Pointlessly toggle LED
-    delay(500);
-    GPIOC_PTOR = 32;
-    delay(500);
-  }
+void setup() {
+  Serial.begin(115200);
+  pinMode(13, OUTPUT); // On-board LED
+  
+  pinMode(8,  OUTPUT); // H_CTL, D3
+  pinMode(7,  OUTPUT); // V1_V2, D2
+  pinMode(9,  OUTPUT); // CLAMP, C3
+  pinMode(10, OUTPUT); // FT,    C4
+  pinMode(2,  OUTPUT); // RESET, D0
+  pinMode(38, OUTPUT); // VIDEO, C11
+  pinMode(36, OUTPUT); // TEMP,  C9
+  pinMode(32, OUTPUT); // DAC0,  B11
+  pinMode(33, OUTPUT); // DAC1,  E24
+  pinMode(16, OUTPUT); // D_N,   B0
+  pinMode(17, OUTPUT); // D_SCK, B1
+  pinMode(18, OUTPUT); // D_CSLD,B3
+  pinMode(19, OUTPUT); // D_CLR, B2
+  pinMode(28,  INPUT); // ENDRUN,A16
 
+  GPIOB_PDOR = 1; // Set ports B-E to outputs.
+  GPIOC_PDOR = 1;
+  GPIOD_PDOR = 1;
+  GPIOE_PDOR = 1;
+
+  // Setup operating variables.
+  xsize = WIDTH; ysize = HEIGHT;
+  xoffs = yoffs = 0;
+  xsec = 30;
+  xmsec = 0;
+  xbin = ybin = 1;
+  
+  GPIOC_PTOR = 0b100000;
+  delay(300);
+  GPIOC_PTOR = 0b100000;
+}
+
+void loop() {
+  
+  while(1){
+    yield();
+    }
 }
 
 void serialEvent() {
