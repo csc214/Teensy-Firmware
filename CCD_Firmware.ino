@@ -1,25 +1,41 @@
 /*
- *GPIOx_PSOR - set output reg
- *GPIOx_PDDR - data direction reg
- *GPIOx_PTOR - toggle output reg
+ * GPIOx_PSOR - set output reg
+ * GPIOx_PDDR - data direction reg
+ * GPIOx_PTOR - toggle output reg
+ * 
+ * when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds
  *
- *  Pin     8  7     2     9 10
- *  Port   D3 D2 D1 D0    C3 C4
- *          H  V     R     C  F
+ *  label     8   7  14   2   |  10  9
+ *  actual   D3  D2  D1  D0   |  C4 C3
+ *            H   V   x   R   |   F  C
  */
 
 
 #include "proto.h"
 
-//when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds
 #define N5DELAY asm volatile( "nop\n" )
-#define VERTICLE_TOGGLE GPIOD_PTOR = 0b100
 
+#define V_TOGGLE GPIOD_PTOR = 0b0100
+#define HR_TOGGLE GPIOD_PTOR = 0b1001
+#define H_TOGGLE GPIOD_PTOR = 0b1000
+#define R_TOGGLE GPIOD_PTOR = 0b0001
+#define FT_TOGGLE GPIOC_PTOR = 0b10000
+#define C_TOGGLE GPIOC_PTOR = 0b1000
+
+#define R_LOW GPIOD_PSOR &= 0xFFFFFFFE //1110
+#define R_HIGH GPIOD_PSOR |= 0b1
+#define V1_LOW GPIOD_PSOR |= 0b100
+#define V1_HIGH GPIOD_PSOR &= 0xFFFFFFFB //1011
+#define H1_LOW GPIOD_PSOR &= 0xFFFFFFF7 //0111
+#define H1_HIGH GPIOD_PSOR |= 0b1000
+#define FT_LOW GPIOC_PSOR &= 0xFFFFFFEF //1110
+#define C_LOW GPIOC_PSOR &= 0xFFFFFFF7 //0111
 
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
-
+int video = 38;
+int img[780][495];
 
 comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="YFRAME", .id=20},
@@ -206,6 +222,7 @@ void handle_comms() {
 void setup() {
   Serial.begin(115200);
   pinMode(13, OUTPUT);
+  
   GPIOC_PDOR = 1;         // Set PORTD to output
 
   // Setup operating variables.
@@ -221,60 +238,129 @@ void expose() {
   flusher();
   GPIOD_PSOR |= 0b100; //v1 low
   delay(xsec*1000 + xmsec);
+  grimg();
   interrupts(); 
 }
 void flusher() {
-  GPIOD_PSOR &= 0xFFFFFFFB;       //h1 low  1011
-  GPIOD_PSOR |= 0b100;            //v2 high
+  GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
+  GPIOD_PSOR |= 0b1100;           //r low v1 low h1 high
+  GPIOC_PSOR &= 0xFFFFFFE7;       //c low ft low
+  
   delayMicroseconds(63);          
-  GPIOC_PTOR = 0b10000;           //even shift
+  FT_TOGGLE;                      //even shift
   delayMicroseconds(17);          //t_VH
-  GPIOC_PTOR = 0b10000;           
-  delayMicroseconds(126);          //arbitrary delay before shift
+  FT_TOGGLE;           
+  delayMicroseconds(126);         //arbitrary delay before shift
   
   for (int c = 0; c < 248; c++) {
-    VERTICLE_TOGGLE; //vertical shift
-    delayMicroseconds(50);//t_V 
-    VERTICLE_TOGGLE; 
-    delayMicroseconds(10);//t_HD
+    V_TOGGLE;                     //vertical shift
+    delayMicroseconds(50);        //t_V 
+    V_TOGGLE; 
+    delayMicroseconds(10);        //t_HD
 
     for (int b = 0; b < 780; b++) {
-      GPIOD_PTOR = 0b1001; //horizontal shift
-      delayMicroseconds(1);
-      GPIOD_PTOR = 0b0001; //reset off
-      delayMicroseconds(4); 
-      GPIOD_PTOR = 0b1000;
-      delayMicroseconds(5);
+      HR_TOGGLE;                  //horizontal shift
+      delayMicroseconds(1);       //t_R
+      R_TOGGLE;                   //reset off
+      delayMicroseconds(4);       // + t_R = tcd
+      H_TOGGLE;
+      delayMicroseconds(5);       
     }
   }
-  VERTICLE_TOGGLE;
+  V_TOGGLE;
   delayMicroseconds(63);
-  GPIOC_PTOR |= 0b10000; //odd shift
-  delayMicroseconds(17);//t_VH
-  GPIOC_PTOR = 0b10000;
+  FT_TOGGLE;                      //odd shift
+  delayMicroseconds(17);          //t_VH
+  FT_TOGGLE;
   delayMicroseconds(63);          //arbitrary delay before shift
-  VERTICLE_TOGGLE;
+  V_TOGGLE;
   delayMicroseconds(63);          //another arbitrary delay
     
   for (int c = 0; c < 247; c++) {
-    VERTICLE_TOGGLE; //vertical shift
-    delayMicroseconds(50);//t_v 
-    VERTICLE_TOGGLE; 
-    delayMicroseconds(10);//t_HD 
+    V_TOGGLE;                     //vertical shift
+    delayMicroseconds(50);        //t_V 
+    V_TOGGLE; 
+    delayMicroseconds(10);        //t_HD 
 
     for (int b = 0; b < 780; b++) {
-      GPIOD_PTOR = 0b1001; //horizontal shift
-      delayMicroseconds(1);
-      GPIOD_PTOR = 0b0001; //reset off
-      delayMicroseconds(4); 
-      GPIOD_PTOR = 0b1000;
+      HR_TOGGLE;                  //horizontal shift
+      delayMicroseconds(1);       //t_R
+      R_TOGGLE;                   //reset off
+      delayMicroseconds(4);       // + t_R = tcd
+      H_TOGGLE;
       delayMicroseconds(5);
     }
   }
 }
 void grimg() {
   noInterrupts();
-  //791 columns, 262 odd rows, 263 even rows
+  GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
+  GPIOD_PSOR |= 0b1100;           //r low v1 low h1 high
+  GPIOC_PSOR &= 0xFFFFFFE7;       //c low ft low
+  int x = 0;
+  int y = 0;
+
+  delayMicroseconds(63);          
+  FT_TOGGLE;                      //even shift
+  delayMicroseconds(17);          //t_VH
+  FT_TOGGLE;           
+  delayMicroseconds(126);         //arbitrary delay before shift
+  
+  for (int c = 0; c < 248; c++) {
+    V_TOGGLE;                     //vertical shift
+    delayMicroseconds(50);        //t_V 
+    V_TOGGLE; 
+    delayMicroseconds(10);        //t_HD
+
+    for (int b = 0; b < 780; b++) {
+      HR_TOGGLE;                  //horizontal shift
+      delayMicroseconds(1);       //t_R
+      R_TOGGLE;                   //reset off
+      delayMicroseconds(4);       // + t_R = tcd
+      C_TOGGLE;
+      delayMicroseconds(1);       //t_C
+      C_TOGGLE;
+      H_TOGGLE;
+      delayMicroseconds(2);       //t_sd
+      img[x][y] = analogRead(video);
+      delayMicroseconds(4);
+      x++;       
+    }
+    x = 0;
+    y++;
+  }
+  V_TOGGLE;
+  delayMicroseconds(63);
+  FT_TOGGLE;                      //odd shift
+  delayMicroseconds(17);          //t_VH
+  FT_TOGGLE;
+  delayMicroseconds(63);          //arbitrary delay before shift
+  V_TOGGLE;
+  delayMicroseconds(63);          //another arbitrary delay
+    
+  for (int c = 0; c < 247; c++) {
+    V_TOGGLE;                     //vertical shift
+    delayMicroseconds(50);        //t_V 
+    V_TOGGLE; 
+    delayMicroseconds(10);        //t_HD 
+
+    for (int b = 0; b < 780; b++) {
+      HR_TOGGLE;                  //horizontal shift
+      delayMicroseconds(1);       //t_R
+      R_TOGGLE;                   //reset off
+      delayMicroseconds(4);       // + t_R = tcd
+      C_TOGGLE;
+      delayMicroseconds(1);       //t_C
+      C_TOGGLE;
+      H_TOGGLE;
+      delayMicroseconds(2);       //t_sd
+      img[x][y] = analogRead(video);
+      delayMicroseconds(4);
+      x++;
+    }
+    x = 0;
+    y++;
+  }
   interrupts();
 }
 
