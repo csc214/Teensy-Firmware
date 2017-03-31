@@ -11,9 +11,17 @@
  */
 
 
+#include <avr/io.h> // Interrupt Vector Definitions
+#include <avr/interrupt.h> // Interrupt Function Definitions
+#include <util/atomic.h>
+
 #include "proto.h"
 
-#define N5DELAY asm volatile( "nop\n" )
+#define N05DELAY asm volatile( "nop\n" )
+#define N10DELAY asm volatile( "nop\nnop\n" )
+#define N20DELAY asm volatile( "nop\nnop\nnop\nnop\n" )
+#define N50DELAY asm volatile( "nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n" )
+#define XDELAY(t) { t = t/5 + ARM_DWT_CYCCNT; while (t > ARM_DWT_CYCCNT) {}}
 
 #define V_TOGGLE GPIOD_PTOR = 0b0100
 #define HR_TOGGLE GPIOD_PTOR = 0b1001
@@ -28,14 +36,17 @@
 #define V1_HIGH GPIOD_PSOR &= 0xFFFFFFFB //1011
 #define H1_LOW GPIOD_PSOR &= 0xFFFFFFF7 //0111
 #define H1_HIGH GPIOD_PSOR |= 0b1000
-#define FT_LOW GPIOC_PSOR &= 0xFFFFFFEF //1110
+#define FT_LOW GPIOC_PSOR &= 0xFFFFFFEF //1110 1111
 #define C_LOW GPIOC_PSOR &= 0xFFFFFFF7 //0111
+
+#define POLL_ENDRUN (GPIOA_PDIR & 0x10000)
 
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
 int video = 38;
-int img[780][495];
+
+uint16_t img[780];
 
 comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="YFRAME", .id=20},
@@ -219,32 +230,24 @@ void handle_comms() {
   input_string[0] = 0x00;
 }
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(13, OUTPUT);
-  
-  GPIOC_PDOR = 1;         // Set PORTD to output
-
-  // Setup operating variables.
-  xsize = WIDTH; ysize = HEIGHT;
-  xoffs = yoffs = 0;
-  xsec = 30;
-  xmsec = 0;
-  xbin = ybin = 1;
-}
-
 void expose() {
-  noInterrupts();
   flusher();
+  noInterrupts();
   GPIOD_PSOR |= 0b100; //v1 low
-  delay(xsec*1000 + xmsec);
+  int xtime = (xsec * 1000) + xmsec;
+  while(!POLL_ENDRUN && xtime){
+      delayMicroseconds(1000);
+      xtime -= 1;
+  }
   grimg();
   interrupts(); 
 }
+
 void flusher() {
+  noInterrupts();
   GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
-  GPIOD_PSOR |= 0b1100;           //r low v1 low h1 high
-  GPIOC_PSOR &= 0xFFFFFFE7;       //c low ft low
+  GPIOD_PSOR |= 0b1100;           //r:low v1:low h1:high c:low ft:low
+  GPIOC_PSOR &= 0xFFFFFFE7;       
   
   delayMicroseconds(63);          
   FT_TOGGLE;                      //even shift
@@ -265,6 +268,11 @@ void flusher() {
       delayMicroseconds(4);       // + t_R = tcd
       H_TOGGLE;
       delayMicroseconds(5);       
+    }
+    
+    if (POLL_ENDRUN){
+      V_TOGGLE;
+      return;
     }
   }
   V_TOGGLE;
@@ -290,15 +298,21 @@ void flusher() {
       H_TOGGLE;
       delayMicroseconds(5);
     }
+    if (POLL_ENDRUN){
+      V_TOGGLE;
+      return;
+    }
   }
+  V_TOGGLE;
+  interrupts();
 }
+
 void grimg() {
   noInterrupts();
   GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
-  GPIOD_PSOR |= 0b1100;           //r low v1 low h1 high
-  GPIOC_PSOR &= 0xFFFFFFE7;       //c low ft low
+  GPIOD_PSOR |= 0b1100;           //r:low v1:low h1:high c:low ft:low
+  GPIOC_PSOR &= 0xFFFFFFE7;
   int x = 0;
-  int y = 0;
 
   delayMicroseconds(63);          
   FT_TOGGLE;                      //even shift
@@ -322,13 +336,20 @@ void grimg() {
       C_TOGGLE;
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
-      img[x][y] = analogRead(video);
-      delayMicroseconds(4);
+      img[x] = analogRead(video);
+      //delayMicroseconds(4);
       x++;       
     }
+    for (x = 0; x < 780; x++) {
+      Serial.println(img[x]);
+    }
+    if (POLL_ENDRUN){
+      V_TOGGLE;
+      return;
+    }
     x = 0;
-    y++;
   }
+  
   V_TOGGLE;
   delayMicroseconds(63);
   FT_TOGGLE;                      //odd shift
@@ -354,24 +375,67 @@ void grimg() {
       C_TOGGLE;
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
-      img[x][y] = analogRead(video);
-      delayMicroseconds(4);
+      img[x] = analogRead(video); //maybe Serial.println(analogRead(video));
+      //delayMicroseconds(4);
       x++;
     }
+    for (x = 0; x < 780; x++) {
+      Serial.println(img[x]);
+    }
     x = 0;
-    y++;
   }
+  if (POLL_ENDRUN){
+    V_TOGGLE;
+    return;
+  }
+  V_TOGGLE;
   interrupts();
 }
 
-void loop() {
-  while (1) {
-    GPIOC_PTOR = 32;  // Pointlessly toggle LED
-    delay(500);
-    GPIOC_PTOR = 32;
-    delay(500);
-  }
+void setup() {
+  Serial.begin(115200);
+  pinMode(13, OUTPUT); // On-board LED
+  
+  pinMode(8,  OUTPUT); // H_CTL, D3
+  pinMode(7,  OUTPUT); // V1_V2, D2
+  pinMode(9,  OUTPUT); // CLAMP, C3
+  pinMode(10, OUTPUT); // FT,    C4
+  pinMode(2,  OUTPUT); // RESET, D0
+  //pinMode(38, OUTPUT); // VIDEO, C11
+  pinMode(36, OUTPUT); // TEMP,  C9
+  pinMode(32, OUTPUT); // DAC0,  B11
+  pinMode(33, OUTPUT); // DAC1,  E24
+  pinMode(16, OUTPUT); // D_N,   B0
+  pinMode(17, OUTPUT); // D_SCK, B1
+  pinMode(18, OUTPUT); // D_CSLD,B3
+  pinMode(19, OUTPUT); // D_CLR, B2
+  pinMode(28,  INPUT); // ENDRUN,A16
 
+  GPIOB_PDOR = 1; // Set ports B-E to outputs.
+  GPIOC_PDOR = 1;
+  GPIOD_PDOR = 1;
+  GPIOE_PDOR = 1;
+
+  // Setup operating variables.
+  xsize = WIDTH; ysize = HEIGHT;
+  xoffs = yoffs = 0;
+  xsec = 30;
+  xmsec = 0;
+  xbin = ybin = 1;
+
+  ARM_DEMCR |= ARM_DEMCR_TRCENA; //CPU cycles, might not be necessary
+  ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
+  
+  GPIOC_PTOR = 0b100000;
+  delay(300);
+  GPIOC_PTOR = 0b100000;
+}
+
+void loop() {
+  
+  while(1){
+    yield();
+    }
 }
 
 void serialEvent() {
