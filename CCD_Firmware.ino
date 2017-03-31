@@ -17,7 +17,11 @@
 
 #include "proto.h"
 
-#define N5DELAY asm volatile( "nop\n" )
+#define N05DELAY asm volatile( "nop\n" )
+#define N10DELAY asm volatile( "nop\nnop\n" )
+#define N20DELAY asm volatile( "nop\nnop\nnop\nnop\n" )
+#define N50DELAY asm volatile( "nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n" )
+#define XDELAY(t) { t = t/5 + ARM_DWT_CYCCNT; while (t > ARM_DWT_CYCCNT) {}}
 
 #define V_TOGGLE GPIOD_PTOR = 0b0100
 #define HR_TOGGLE GPIOD_PTOR = 0b1001
@@ -32,7 +36,7 @@
 #define V1_HIGH GPIOD_PSOR &= 0xFFFFFFFB //1011
 #define H1_LOW GPIOD_PSOR &= 0xFFFFFFF7 //0111
 #define H1_HIGH GPIOD_PSOR |= 0b1000
-#define FT_LOW GPIOC_PSOR &= 0xFFFFFFEF //1110
+#define FT_LOW GPIOC_PSOR &= 0xFFFFFFEF //1110 1111
 #define C_LOW GPIOC_PSOR &= 0xFFFFFFF7 //0111
 
 #define POLL_ENDRUN (GPIOA_PDIR & 0x10000)
@@ -227,20 +231,23 @@ void handle_comms() {
 }
 
 void expose() {
-  noInterrupts();
   flusher();
+  noInterrupts();
   GPIOD_PSOR |= 0b100; //v1 low
   int xtime = (xsec * 1000) + xmsec;
   while(!POLL_ENDRUN && xtime){
       delayMicroseconds(1000);
       xtime -= 1;
     }
+  grimg();
   interrupts(); 
 }
+
 void flusher() {
+  noInterrupts();
   GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
-  GPIOD_PSOR |= 0b1100;           //r low v1 low h1 high
-  GPIOC_PSOR &= 0xFFFFFFE7;       //c low ft low
+  GPIOD_PSOR |= 0b1100;           //r:low v1:low h1:high c:low ft:low
+  GPIOC_PSOR &= 0xFFFFFFE7;       
   
   delayMicroseconds(63);          
   FT_TOGGLE;                      //even shift
@@ -263,7 +270,7 @@ void flusher() {
       delayMicroseconds(5);       
     }
     
-  if (POLL_ENDRUN){
+    if (POLL_ENDRUN){
       V_TOGGLE;
       return;
     }
@@ -291,7 +298,8 @@ void flusher() {
       H_TOGGLE;
       delayMicroseconds(5);
     }
-  if (POLL_ENDRUN){
+    
+    if (POLL_ENDRUN){
       V_TOGGLE;
       return;
     }
@@ -299,13 +307,13 @@ void flusher() {
   V_TOGGLE;
   interrupts();
 }
+
 void grimg() {
   noInterrupts();
   GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
-  GPIOD_PSOR |= 0b1100;           //r low v1 low h1 high
-  GPIOC_PSOR &= 0xFFFFFFE7;       //c low ft low
+  GPIOD_PSOR |= 0b1100;           //r:low v1:low h1:high c:low ft:low
+  GPIOC_PSOR &= 0xFFFFFFE7;
   int x = 0;
-  //int y = 0;
 
   delayMicroseconds(63);          
   FT_TOGGLE;                      //even shift
@@ -330,12 +338,19 @@ void grimg() {
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
       img[x] = analogRead(video);
-      delayMicroseconds(4);
+      //delayMicroseconds(4);
       x++;       
     }
+    for (x = 0; x < 780; x++) {
+      Serial.println(img[x]);
+    }
+    if (POLL_ENDRUN){
+      V_TOGGLE;
+      return;
+    }
     x = 0;
-    //y++;
   }
+  
   V_TOGGLE;
   delayMicroseconds(63);
   FT_TOGGLE;                      //odd shift
@@ -361,13 +376,20 @@ void grimg() {
       C_TOGGLE;
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
-      img[x] = analogRead(video);
-      delayMicroseconds(4);
+      img[x] = analogRead(video); //maybe Serial.println(analogRead(video));
+      //delayMicroseconds(4);
       x++;
     }
+    for (x = 0; x < 780; x++) {
+      Serial.println(img[x]);
+    }
     x = 0;
-    //y++;
   }
+  if (POLL_ENDRUN){
+    V_TOGGLE;
+    return;
+  }
+  V_TOGGLE;
   interrupts();
 }
 
@@ -380,7 +402,7 @@ void setup() {
   pinMode(9,  OUTPUT); // CLAMP, C3
   pinMode(10, OUTPUT); // FT,    C4
   pinMode(2,  OUTPUT); // RESET, D0
-  pinMode(38, OUTPUT); // VIDEO, C11
+  //pinMode(38, OUTPUT); // VIDEO, C11
   pinMode(36, OUTPUT); // TEMP,  C9
   pinMode(32, OUTPUT); // DAC0,  B11
   pinMode(33, OUTPUT); // DAC1,  E24
@@ -401,6 +423,9 @@ void setup() {
   xsec = 30;
   xmsec = 0;
   xbin = ybin = 1;
+
+  ARM_DEMCR |= ARM_DEMCR_TRCENA; //CPU cycles, might not be necessary
+  ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
   
   GPIOC_PTOR = 0b100000;
   delay(300);
