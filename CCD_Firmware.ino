@@ -17,11 +17,11 @@
 
 #include "proto.h"
 
-#define N05DELAY asm volatile( "nop\n" )
-#define N10DELAY asm volatile( "nop\nnop\n" )
+#define N05DELAY asm volatile( "nop\n" )                                                    //noisey, too quick
+#define N10DELAY asm volatile( "nop\nnop\n" )                                               //still noisey
 #define N20DELAY asm volatile( "nop\nnop\nnop\nnop\n" )
 #define N50DELAY asm volatile( "nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n" )
-#define XDELAY(t) { t = t/5 + ARM_DWT_CYCCNT; while (t > ARM_DWT_CYCCNT) {}}
+#define NXDELAY(t) { int x = ((t*100)/521 + ARM_DWT_CYCCNT); while (x > ARM_DWT_CYCCNT) {}}
 
 #define V_TOGGLE GPIOD_PTOR = 0b0100
 #define HR_TOGGLE GPIOD_PTOR = 0b1001
@@ -30,14 +30,14 @@
 #define FT_TOGGLE GPIOC_PTOR = 0b10000
 #define C_TOGGLE GPIOC_PTOR = 0b1000
 
-#define R_LOW GPIOD_PSOR &= 0xFFFFFFFE //1110
-#define R_HIGH GPIOD_PSOR |= 0b1
-#define V1_LOW GPIOD_PSOR |= 0b100
-#define V1_HIGH GPIOD_PSOR &= 0xFFFFFFFB //1011
-#define H1_LOW GPIOD_PSOR &= 0xFFFFFFF7 //0111
-#define H1_HIGH GPIOD_PSOR |= 0b1000
-#define FT_LOW GPIOC_PSOR &= 0xFFFFFFEF //1110 1111
-#define C_LOW GPIOC_PSOR &= 0xFFFFFFF7 //0111
+#define R_LOW GPIOD_PCOR = 0b1
+#define R_HIGH GPIOD_PSOR = 0b1
+#define V1_LOW GPIOD_PSOR = 0b100
+#define V1_HIGH GPIOD_PCOR = 0b100
+#define H1_LOW GPIOD_PCOR = 0b1000
+#define H1_HIGH GPIOD_PSOR = 0b1000
+#define FT_LOW GPIOC_PCOR = 0b10000
+#define C_LOW GPIOC_PCOR = 0b1000
 
 #define POLL_ENDRUN (GPIOA_PDIR & 0x10000)
 
@@ -214,8 +214,6 @@ void handle_comms() {
       flusher();
       break;
     case GRIMG:
-      flusher();
-      expose();
       grimg();
       break;
     case TEST:
@@ -245,9 +243,11 @@ void expose() {
 
 void flusher() {
   noInterrupts();
-  GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
-  GPIOD_PSOR |= 0b1100;           //r:low v1:low h1:high c:low ft:low
-  GPIOC_PSOR &= 0xFFFFFFE7;       
+  R_LOW;                        //initial states
+  C_LOW;
+  V1_LOW;
+  H1_HIGH;
+  FT_LOW;
   
   delayMicroseconds(63);          
   FT_TOGGLE;                      //even shift
@@ -310,9 +310,11 @@ void flusher() {
 
 void grimg() {
   noInterrupts();
-  GPIOD_PSOR &= 0xFFFFFFFE;       //initial states
-  GPIOD_PSOR |= 0b1100;           //r:low v1:low h1:high c:low ft:low
-  GPIOC_PSOR &= 0xFFFFFFE7;
+  R_LOW;                        //initial states
+  C_LOW;
+  V1_LOW;
+  H1_HIGH;
+  FT_LOW;
   int x = 0;
 
   delayMicroseconds(63);          
@@ -340,7 +342,7 @@ void grimg() {
       img[x] = analogRead(video);
       //delayMicroseconds(4);
       x++;       
-    }
+    }//end row shifting
     for (x = 0; x < 780; x++) {
       Serial.println(img[x]);
     }
@@ -349,7 +351,7 @@ void grimg() {
       return;
     }
     x = 0;
-  }
+  }//end vertical shifting
   
   V_TOGGLE;
   delayMicroseconds(63);
@@ -376,7 +378,7 @@ void grimg() {
       C_TOGGLE;
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
-      img[x] = analogRead(video); //maybe Serial.println(analogRead(video));
+      img[x] = analogRead(video); 
       //delayMicroseconds(4);
       x++;
     }
@@ -433,7 +435,6 @@ void setup() {
 }
 
 void loop() {
-  
   while(1){
     yield();
     }
