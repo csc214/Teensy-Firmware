@@ -1,4 +1,4 @@
-/*
+/* wait half a second to turn dac on well vsub(through pot)
  * GPIOx_PSOR - set output reg
  * GPIOx_PDDR - data direction reg
  * GPIOx_PTOR - toggle output reg
@@ -45,6 +45,10 @@ int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
 int video = 38;
+const int pinIN = 37;
+const int pinSCK = 36;
+const int pinCSLD= 35;
+const int pinCLR = 34;
 
 uint16_t img[780];
 
@@ -73,7 +77,10 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="EXPOSE", .id=230},
                       {.name="FLUSH",  .id=240},
                       {.name="GRIMG",  .id=250},
-                      {.name="TEST",   .id=260}
+                      {.name="TEST",   .id=260},
+                      {.name="THSHIFT",.id=261},
+                      {.name="TVSHIFT",.id=262},
+                      {.name="DACOFF", .id=270}
                      };
 
 char  input_string[1024];
@@ -216,9 +223,19 @@ void handle_comms() {
     case GRIMG:
       grimg();
       break;
+    case DACOFF:
+      dac_programmer(0b11111111, 0);
+      //digitalWrite(pinCLR, LOW); //doesn't work well
+      break;
     case TEST:
       if (*param) Serial.write(param);
       else Serial.write("42");
+      break;
+    case THSHIFT:
+      thshift();
+      break;
+    case TVSHIFT:
+      tvshift();
       break;
     default:
       Serial.write(EDELIM);
@@ -226,6 +243,21 @@ void handle_comms() {
   }
   Serial.write(DELIM);
   input_string[0] = 0x00;
+}
+
+void thshift() {
+  noInterrupts();
+  while (1) {
+  R_LOW; 
+  H1_LOW;
+  delayMicroseconds(5);
+  R_HIGH;
+  H1_HIGH;
+  delayMicroseconds(5); }
+}
+
+void tvshift() {
+  
 }
 
 void expose() {
@@ -395,25 +427,51 @@ void grimg() {
   interrupts();
 }
 
+void dac_programmer(uint8_t chn, double val)
+{
+  unsigned long num = (unsigned long)(val * 255.0 / 12.0);
+  //int num = val;
+  //the control word is 16 bits
+  //the high 8 bits defines the output channel
+  
+  unsigned long t = chn << 8;
+  t = t | num;
+   
+  digitalWrite(pinCSLD, LOW);
+  for (long i = 15; i >= 0; i--)
+  { 
+    long b = (t >> i) & 1;
+    digitalWrite(pinIN, b);
+    digitalWrite(pinSCK, HIGH);
+    digitalWrite(pinSCK, LOW);
+  }
+   
+  digitalWrite(pinCSLD, HIGH);
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(13, OUTPUT); // On-board LED
   
   pinMode(8,  OUTPUT); // H_CTL, D3
   pinMode(7,  OUTPUT); // V1_V2, D2
-  pinMode(9,  OUTPUT); // CLAMP, C3
-  pinMode(10, OUTPUT); // FT,    C4
-  pinMode(2,  OUTPUT); // RESET, D0
-  //pinMode(38, OUTPUT); // VIDEO, C11
-  pinMode(36, OUTPUT); // TEMP,  C9
+  pinMode(5,  OUTPUT); // CLAMP, C3
+  pinMode(8, OUTPUT); // FT,    C4
+  pinMode(9,  OUTPUT); // RESET, D0
+  //pinMode(A2, OUTPUT); // VIDEO, C11
+  pinMode(A0, OUTPUT); // TEMP,  C9
   pinMode(32, OUTPUT); // DAC0,  B11
   pinMode(33, OUTPUT); // DAC1,  E24
-  pinMode(16, OUTPUT); // D_N,   B0
-  pinMode(17, OUTPUT); // D_SCK, B1
-  pinMode(18, OUTPUT); // D_CSLD,B3
-  pinMode(19, OUTPUT); // D_CLR, B2
+  pinMode(pinIN, OUTPUT); // D_N,   B0
+  pinMode(pinSCK, OUTPUT); // D_SCK, B1
+  pinMode(pinCSLD, OUTPUT); // D_CSLD,B3
+  pinMode(pinCLR, OUTPUT); // D_CLR, B2
   pinMode(28,  INPUT); // ENDRUN,A16
-
+   
+  digitalWrite(pinCLR, HIGH);
+  digitalWrite(pinSCK, LOW);
+  digitalWrite(pinCSLD, HIGH);
+  
   GPIOB_PDOR = 1; // Set ports B-E to outputs.
   GPIOC_PDOR = 1;
   GPIOD_PDOR = 1;
@@ -429,15 +487,25 @@ void setup() {
   ARM_DEMCR |= ARM_DEMCR_TRCENA; //CPU cycles, might not be necessary
   ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
   
+  dac_programmer(0b1, 9);         //DAC0 - 9v     reads 8
+  dac_programmer(0b10, 8);        //DAC1 - 8v     7.1
+  dac_programmer(0b100, 3);       //DAC2 - 3v     2.6
+  dac_programmer(0b1000, 8.5);    //DAC3 - 8.5v   reads7.5
+  dac_programmer(0b10000, 4);     //DAC4 - 4v     3.5
+  dac_programmer(0b100000, 11);   //DAC5 - 11v    9.8
+  dac_programmer(0b1000000, 2);   //DAC6 - 2v     1.7
+  dac_programmer(0b10000000, 7.5);//DAC7 - 7.5v   6.6
+  
   GPIOC_PTOR = 0b100000;
   delay(300);
   GPIOC_PTOR = 0b100000;
+
 }
 
 void loop() {
   while(1){
     yield();
-    }
+  }
 }
 
 void serialEvent() {
