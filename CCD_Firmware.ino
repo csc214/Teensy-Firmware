@@ -45,10 +45,10 @@ int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
 int video = 38;
-const int pinIN = 37;
-const int pinSCK = 36;
-const int pinCSLD= 35;
-const int pinCLR = 34;
+const int pinIN = 0;
+const int pinSCK = 1;
+const int pinCSLD= 2;
+const int pinCLR = 3;
 
 uint16_t img[780];
 
@@ -247,17 +247,41 @@ void handle_comms() {
 
 void thshift() {
   noInterrupts();
-  while (1) {
-  R_LOW; 
-  H1_LOW;
-  delayMicroseconds(5);
-  R_HIGH;
   H1_HIGH;
-  delayMicroseconds(5); }
+  R_LOW;
+  while (1) {
+    HR_TOGGLE;
+    delayMicroseconds(1);
+    R_LOW;
+    delayMicroseconds(4);
+    H1_HIGH;
+    delayMicroseconds(5);
+    if (POLL_ENDRUN){
+      interrupts();
+      return;
+    } 
+  }
 }
 
 void tvshift() {
-  
+  noInterrupts();
+  while (1) {
+    FT_LOW;
+    V1_LOW;
+    delayMicroseconds(10);
+    FT_TOGGLE;
+    delayMicroseconds(5);
+    FT_TOGGLE;
+    delayMicroseconds(10);
+    V_TOGGLE;
+    delayMicroseconds(10);
+    FT_TOGGLE;
+    delayMicroseconds(5);
+    if (POLL_ENDRUN){
+      interrupts();
+      return;
+    } 
+  }
 }
 
 void expose() {
@@ -433,7 +457,7 @@ void dac_programmer(uint8_t chn, double val)
   //int num = val;
   //the control word is 16 bits
   //the high 8 bits defines the output channel
-  
+  num = 125;
   unsigned long t = chn << 8;
   t = t | num;
    
@@ -443,6 +467,7 @@ void dac_programmer(uint8_t chn, double val)
     long b = (t >> i) & 1;
     digitalWrite(pinIN, b);
     digitalWrite(pinSCK, HIGH);
+    delayMicroseconds(5);
     digitalWrite(pinSCK, LOW);
   }
    
@@ -455,9 +480,9 @@ void setup() {
   
   pinMode(8,  OUTPUT); // H_CTL, D3
   pinMode(7,  OUTPUT); // V1_V2, D2
-  pinMode(5,  OUTPUT); // CLAMP, C3
-  pinMode(8, OUTPUT); // FT,    C4
-  pinMode(9,  OUTPUT); // RESET, D0
+  pinMode(9,  OUTPUT); // CLAMP, C3
+  pinMode(10, OUTPUT); // FT,    C4
+  pinMode(2,  OUTPUT); // RESET, D0
   //pinMode(A2, OUTPUT); // VIDEO, C11
   pinMode(A0, OUTPUT); // TEMP,  C9
   pinMode(32, OUTPUT); // DAC0,  B11
@@ -495,6 +520,7 @@ void setup() {
   dac_programmer(0b100000, 11);   //DAC5 - 11v    9.8
   dac_programmer(0b1000000, 2);   //DAC6 - 2v     1.7
   dac_programmer(0b10000000, 7.5);//DAC7 - 7.5v   6.6
+  //dac_programmer(0b11111111, 12);
   
   GPIOC_PTOR = 0b100000;
   delay(300);

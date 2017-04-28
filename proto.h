@@ -34,6 +34,11 @@
 #define GRIMG   250   // Acquire image pixels (~10us per pixel) in AOI specified above
 #define TEST    260   // Test function to verify comms, return 42
 
+#define THSHIFT 261   // Toggles horizontal register and reset
+#define TVSHIFT 262   // Toggles vertical shift and frame transfer
+
+#define DACOFF  270
+
 #define DELIM   " OK\n"  // Delimiter for returning messages from teensy
 #define EDELIM  " ERR\n" // Delimiter for returning an error message
 
@@ -46,7 +51,7 @@
 
 #define VERSION  "0.0.1"
 
-#define NCOMMS 26  // Number of commands available
+#define NCOMMS 29  // Number of commands available
 
 typedef struct {
   String name;
