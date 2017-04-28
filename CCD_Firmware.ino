@@ -17,8 +17,8 @@
 
 #include "proto.h"
 
-#define N05DELAY asm volatile( "nop\n" )                                                    //noisey, too quick
-#define N10DELAY asm volatile( "nop\nnop\n" )                                               //still noisey
+#define N05DELAY asm volatile( "nop\n" )                                               //noisey, too quick
+#define N10DELAY asm volatile( "nop\nnop\n" )                                          //still noisey
 #define N20DELAY asm volatile( "nop\nnop\nnop\nnop\n" )
 #define N50DELAY asm volatile( "nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n" )
 #define NXDELAY(t) { int x = ((t*100)/521 + ARM_DWT_CYCCNT); while (x > ARM_DWT_CYCCNT) {}}
@@ -457,7 +457,7 @@ void dac_programmer(uint8_t chn, double val)
   //int num = val;
   //the control word is 16 bits
   //the high 8 bits defines the output channel
-  num = 125;
+  
   unsigned long t = chn << 8;
   t = t | num;
    
