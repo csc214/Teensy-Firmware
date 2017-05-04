@@ -37,10 +37,11 @@
 #define THSHIFT 261   // Toggles horizontal register and reset
 #define TVSHIFT 262   // Toggles vertical shift and frame transfer
 
-#define DACOFF  270
+#define DACOFF  270   // Sets DAC voltages to zero
 
 #define DELIM   " OK\n"  // Delimiter for returning messages from teensy
 #define EDELIM  " ERR\n" // Delimiter for returning an error message
+#define HALT    " HALT\n"// Delimiter for pollendrun stop
 
 
 #define WIDTH  768 // Resolution for KAI-0370C

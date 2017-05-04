@@ -258,6 +258,7 @@ void thshift() {
     delayMicroseconds(5);
     if (POLL_ENDRUN){
       interrupts();
+      Serial.write(HALT);
       return;
     } 
   }
@@ -267,6 +268,7 @@ void tvshift() {
   noInterrupts();
   while (1) {
     FT_LOW;
+    delayMicroseconds(10);
     V1_LOW;
     delayMicroseconds(10);
     FT_TOGGLE;
@@ -279,6 +281,7 @@ void tvshift() {
     delayMicroseconds(5);
     if (POLL_ENDRUN){
       interrupts();
+      Serial.write(HALT);
       return;
     } 
   }
@@ -327,6 +330,8 @@ void flusher() {
     }
     
     if (POLL_ENDRUN){
+      interrupts();
+      Serial.write(HALT);
       V_TOGGLE;
       return;
     }
@@ -356,6 +361,8 @@ void flusher() {
     }
     
     if (POLL_ENDRUN){
+      interrupts();
+      Serial.write(HALT);
       V_TOGGLE;
       return;
     }
@@ -395,7 +402,7 @@ void grimg() {
       C_TOGGLE;
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
-      img[x] = analogRead(video);
+      img[b] = c^b; //analogRead(video);
       //delayMicroseconds(4);
       x++;       
     }//end row shifting
@@ -403,6 +410,8 @@ void grimg() {
       Serial.println(img[x]);
     }
     if (POLL_ENDRUN){
+      interrupts();
+      Serial.write(HALT);
       V_TOGGLE;
       return;
     }
@@ -434,7 +443,7 @@ void grimg() {
       C_TOGGLE;
       H_TOGGLE;
       delayMicroseconds(2);       //t_sd
-      img[x] = analogRead(video); 
+      img[b] = c^b;//analogRead(video); 
       //delayMicroseconds(4);
       x++;
     }
@@ -444,6 +453,8 @@ void grimg() {
     x = 0;
   }
   if (POLL_ENDRUN){
+    interrupts();
+    Serial.write(HALT);
     V_TOGGLE;
     return;
   }
@@ -512,15 +523,15 @@ void setup() {
   ARM_DEMCR |= ARM_DEMCR_TRCENA; //CPU cycles, might not be necessary
   ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
   
-  dac_programmer(0b1, 9);         //DAC0 - 9v     reads 8
+  /*dac_programmer(0b1, 9);         //DAC0 - 9v     reads 8
   dac_programmer(0b10, 8);        //DAC1 - 8v     7.1
   dac_programmer(0b100, 3);       //DAC2 - 3v     2.6
   dac_programmer(0b1000, 8.5);    //DAC3 - 8.5v   reads7.5
   dac_programmer(0b10000, 4);     //DAC4 - 4v     3.5
   dac_programmer(0b100000, 11);   //DAC5 - 11v    9.8
   dac_programmer(0b1000000, 2);   //DAC6 - 2v     1.7
-  dac_programmer(0b10000000, 7.5);//DAC7 - 7.5v   6.6
-  //dac_programmer(0b11111111, 12);
+  dac_programmer(0b10000000, 7.5);//DAC7 - 7.5v   6.6*/
+  dac_programmer(0b11111111, 6);
   
   GPIOC_PTOR = 0b100000;
   delay(300);
