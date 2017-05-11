@@ -558,9 +558,7 @@ void setup() {
 }
 
 float get_temp(){
-  float temp = analogRead(A0)*3.3/1024.0;
-  temp = temp - 0.5;
-  temp = temp / 0.01;
+  float temp = analogRead(A0);
   return temp;
   }
 
