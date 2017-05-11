@@ -44,6 +44,7 @@
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
+int temp_mon = 0;               // Monitor temperature?
 int video = 38;
 const int pinIN = 0;
 const int pinSCK = 1;
@@ -66,6 +67,7 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="YOFFS?", .id=120},
                       {.name="XBIN?",  .id=130},
                       {.name="YBIN?",  .id=140},
+                      {.name="TEMP?",  .id=145},
                       {.name="XSEC",   .id=150},
                       {.name="XMSEC",  .id=160},
                       {.name="XSIZE",  .id=170},
@@ -74,6 +76,8 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="YOFFS",  .id=200},
                       {.name="XBIN",   .id=210},
                       {.name="YBIN",   .id=220},
+                      {.name="TTEMP",  .id=225},
+                      {.name="MTEMP",  .id=227},
                       {.name="EXPOSE", .id=230},
                       {.name="FLUSH",  .id=240},
                       {.name="GRIMG",  .id=250},
@@ -85,6 +89,9 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
 
 char  input_string[1024];
 char* stend = input_string;
+
+float get_temp();
+void set_temp(int duty);
 
 void handle_comms() {
   if (input_string[0] == 0x00){
@@ -164,6 +171,9 @@ void handle_comms() {
       itoa(ybin, response, 10);
       Serial.write(response);
       break;
+    case TEMPQ:
+      Serial.print(get_temp());
+      break;
     case XSEC:
       xsec = atoi(param);
       break;
@@ -212,8 +222,12 @@ void handle_comms() {
         }
       ybin = atoi(param);
       break;
-
-    //TODO: Fill in these functions
+    case TTEMP:
+      set_temp(atoi(param));
+      break;
+    case MTEMP:
+      temp_mon ^= 1;
+      break;
     case EXPOSE:
       expose();
       break;
@@ -507,6 +521,11 @@ void setup() {
   digitalWrite(pinCLR, HIGH);
   digitalWrite(pinSCK, LOW);
   digitalWrite(pinCSLD, HIGH);
+
+  analogReadResolution(10);
+  analogWriteResolution(10);
+
+  analogWrite(A2, 1023);
   
   GPIOB_PDOR = 1; // Set ports B-E to outputs.
   GPIOC_PDOR = 1;
@@ -532,16 +551,29 @@ void setup() {
   dac_programmer(0b1000000, 2);   //DAC6 - 2v     1.7
   dac_programmer(0b10000000, 7.5);//DAC7 - 7.5v   6.6*/
   dac_programmer(0b11111111, 6);
-  
   GPIOC_PTOR = 0b100000;
   delay(300);
   GPIOC_PTOR = 0b100000;
 
 }
 
+float get_temp(){
+  float temp = analogRead(A0)*3.3/1024.0;
+  temp = temp - 0.5;
+  temp = temp / 0.01;
+  return temp;
+  }
+
+// Set the duty cycle for the TEC, where duty is out of 1023
+void set_temp(int duty){
+  analogWrite(A2, 1023 - duty);
+  }
+
 void loop() {
   while(1){
+    if(temp_mon) Serial.println(get_temp());
     yield();
+    delay(5);
   }
 }
 
