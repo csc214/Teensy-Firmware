@@ -45,13 +45,15 @@ int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
 int temp_mon = 0;               // Monitor temperature?
+int pec_duty = 0;
 int video = 38;
 const int pinIN = 0;
 const int pinSCK = 1;
 const int pinCSLD= 2;
 const int pinCLR = 3;
 
-uint16_t img[780];
+uint16_t img[WIDTH];
+int lace1, lace2; // lace1 is the number of lines in the even lace, lace2 the odds
 
 comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="YFRAME", .id=20},
@@ -68,6 +70,7 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="XBIN?",  .id=130},
                       {.name="YBIN?",  .id=140},
                       {.name="TEMP?",  .id=145},
+                      {.name="TTEMP?", .id=147},
                       {.name="XSEC",   .id=150},
                       {.name="XMSEC",  .id=160},
                       {.name="XSIZE",  .id=170},
@@ -174,6 +177,8 @@ void handle_comms() {
     case TEMPQ:
       Serial.print(get_temp());
       break;
+    case TTEMPQ:
+      Serial.print(pec_duty);
     case XSEC:
       xsec = atoi(param);
       break;
@@ -400,13 +405,13 @@ void grimg() {
   FT_TOGGLE;           
   delayMicroseconds(126);         //arbitrary delay before shift
   
-  for (int c = 0; c < 248; c++) {
+  for (int c = 0; c < lace1; c++) {
     V_TOGGLE;                     //vertical shift
     delayMicroseconds(50);        //t_V 
     V_TOGGLE; 
     delayMicroseconds(10);        //t_HD
 
-    for (int b = 0; b < 780; b++) {
+    for (int b = 0; b < HEIGHT; b++) {
       HR_TOGGLE;                  //horizontal shift
       delayMicroseconds(1);       //t_R
       R_TOGGLE;                   //reset off
@@ -420,9 +425,7 @@ void grimg() {
       //delayMicroseconds(4);
       x++;       
     }//end row shifting
-    for (x = 0; x < 780; x++) {
-      Serial.println(img[x]);
-    }
+    Serial.write((char*)img, HEIGHT * 2); // Twice the height because every pixel is a 16-bit number
     if (POLL_ENDRUN){
       interrupts();
       Serial.write(HALT);
@@ -441,13 +444,13 @@ void grimg() {
   V_TOGGLE;
   delayMicroseconds(63);          //another arbitrary delay
     
-  for (int c = 0; c < 247; c++) {
+  for (int c = 0; c < lace1; c++) {
     V_TOGGLE;                     //vertical shift
     delayMicroseconds(50);        //t_V 
     V_TOGGLE; 
     delayMicroseconds(10);        //t_HD 
 
-    for (int b = 0; b < 780; b++) {
+    for (int b = 0; b < HEIGHT; b++) {
       HR_TOGGLE;                  //horizontal shift
       delayMicroseconds(1);       //t_R
       R_TOGGLE;                   //reset off
@@ -461,9 +464,7 @@ void grimg() {
       //delayMicroseconds(4);
       x++;
     }
-    for (x = 0; x < 780; x++) {
-      Serial.println(img[x]);
-    }
+    Serial.write((char*)img, HEIGHT * 2);
     x = 0;
   }
   if (POLL_ENDRUN){
@@ -534,6 +535,8 @@ void setup() {
 
   // Setup operating variables.
   xsize = WIDTH; ysize = HEIGHT;
+  lace1 = HEIGHT / 2; lace2 = (HEIGHT / 2) + 1;
+  
   xoffs = yoffs = 0;
   xsec = 30;
   xmsec = 0;
@@ -564,7 +567,8 @@ float get_temp(){
 
 // Set the duty cycle for the TEC, where duty is out of 1023
 void set_temp(int duty){
-  analogWrite(A2, 1023 - duty);
+  analogWrite(A2, 1024 - duty);
+  pec_duty = duty;
   }
 
 void loop() {
