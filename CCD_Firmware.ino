@@ -45,47 +45,57 @@
 int xsize, ysize, xoffs, yoffs; // AOI vars
 int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
+int temp_mon = 0;               // Monitor temperature?
+int pec_duty = 0;
 int video = 38;
 const int pinIN = 24;
 const int pinSCK = 25;
 const int pinCSLD = 26;
 const int pinCLR = 27;
 
-uint16_t img[780];
+uint16_t img[WIDTH];
+int lace1, lace2; // lace1 is the number of lines in the even lace, lace2 the odds
 
-comm_t comm_list[NCOMMS] = {{.name = "XFRAME", .id = 10},
-  {.name = "YFRAME", .id = 20},
-  {.name = "CCDPX",  .id = 30},
-  {.name = "CCDPY",  .id = 40},
-  {.name = "CCDT",   .id = 50},
-  {.name = "VER?",   .id = 60},
-  {.name = "XSEC?",  .id = 70},
-  {.name = "XMSEC?", .id = 80},
-  {.name = "XSIZE?", .id = 90},
-  {.name = "YSIZE?", .id = 100},
-  {.name = "XOFFS?", .id = 110},
-  {.name = "YOFFS?", .id = 120},
-  {.name = "XBIN?",  .id = 130},
-  {.name = "YBIN?",  .id = 140},
-  {.name = "XSEC",   .id = 150},
-  {.name = "XMSEC",  .id = 160},
-  {.name = "XSIZE",  .id = 170},
-  {.name = "YSIZE",  .id = 180},
-  {.name = "XOFFS",  .id = 190},
-  {.name = "YOFFS",  .id = 200},
-  {.name = "XBIN",   .id = 210},
-  {.name = "YBIN",   .id = 220},
-  {.name = "EXPOSE", .id = 230},
-  {.name = "FLUSH",  .id = 240},
-  {.name = "GRIMG",  .id = 250},
-  {.name = "TEST",   .id = 260},
-  {.name = "THSHIFT", .id = 261},
-  {.name = "TVSHIFT", .id = 262},
-  {.name = "DACOFF", .id = 270}
-};
+comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
+                      {.name="YFRAME", .id=20},
+                      {.name="CCDPX",  .id=30},
+                      {.name="CCDPY",  .id=40},
+                      {.name="CCDT",   .id=50},
+                      {.name="VER?",   .id=60},
+                      {.name="XSEC?",  .id=70},
+                      {.name="XMSEC?", .id=80},
+                      {.name="XSIZE?", .id=90},
+                      {.name="YSIZE?", .id=100},
+                      {.name="XOFFS?", .id=110},
+                      {.name="YOFFS?", .id=120},
+                      {.name="XBIN?",  .id=130},
+                      {.name="YBIN?",  .id=140},
+                      {.name="TEMP?",  .id=145},
+                      {.name="TTEMP?", .id=147},
+                      {.name="XSEC",   .id=150},
+                      {.name="XMSEC",  .id=160},
+                      {.name="XSIZE",  .id=170},
+                      {.name="YSIZE",  .id=180},
+                      {.name="XOFFS",  .id=190},
+                      {.name="YOFFS",  .id=200},
+                      {.name="XBIN",   .id=210},
+                      {.name="YBIN",   .id=220},
+                      {.name="TTEMP",  .id=225},
+                      {.name="MTEMP",  .id=227},
+                      {.name="EXPOSE", .id=230},
+                      {.name="FLUSH",  .id=240},
+                      {.name="GRIMG",  .id=250},
+                      {.name="TEST",   .id=260},
+                      {.name="THSHIFT",.id=261},
+                      {.name="TVSHIFT",.id=262},
+                      {.name="DACOFF", .id=270}
+                     };
 
 char  input_string[1024];
 char* stend = input_string;
+
+float get_temp();
+void set_temp(int duty);
 
 void handle_comms() {
   if (input_string[0] == 0x00) {
@@ -165,6 +175,11 @@ void handle_comms() {
       itoa(ybin, response, 10);
       Serial.write(response);
       break;
+    case TEMPQ:
+      Serial.print(get_temp());
+      break;
+    case TTEMPQ:
+      Serial.print(pec_duty);
     case XSEC:
       xsec = atoi(param);
       break;
@@ -213,8 +228,12 @@ void handle_comms() {
       }
       ybin = atoi(param);
       break;
-
-    //TODO: Fill in these functions
+    case TTEMP:
+      set_temp(atoi(param));
+      break;
+    case MTEMP:
+      temp_mon ^= 1;
+      break;
     case EXPOSE:
       expose();
       break;
@@ -387,13 +406,13 @@ void grimg() {
   FT_TOGGLE;
   delayMicroseconds(126);         //arbitrary delay before shift
 
-  for (int c = 0; c < 248; c++) {
+  for (int c = 0; c < lace1; c++) {
     V_TOGGLE;                     //vertical shift
     delayMicroseconds(50);        //t_V
     V_TOGGLE;
     delayMicroseconds(10);        //t_HD
 
-    for (int b = 0; b < 780; b++) {
+    for (int b = 0; b < HEIGHT; b++) {
       HR_TOGGLE;                  //horizontal shift
       delayMicroseconds(1);       //t_R
       R_TOGGLE;                   //reset off
@@ -407,10 +426,8 @@ void grimg() {
       //delayMicroseconds(4);
       x++;
     }//end row shifting
-    for (x = 0; x < 780; x++) {
-      Serial.println(img[x]);
-    }
-    if (POLL_ENDRUN) {
+    Serial.write((char*)img, HEIGHT * 2); // Twice the height because every pixel is a 16-bit number
+    if (POLL_ENDRUN){
       interrupts();
       Serial.write(HALT);
       V_TOGGLE;
@@ -427,14 +444,14 @@ void grimg() {
   delayMicroseconds(63);          //arbitrary delay before shift
   V_TOGGLE;
   delayMicroseconds(63);          //another arbitrary delay
-
-  for (int c = 0; c < 247; c++) {
+    
+  for (int c = 0; c < lace1; c++) {
     V_TOGGLE;                     //vertical shift
     delayMicroseconds(50);        //t_V
     V_TOGGLE;
     delayMicroseconds(10);        //t_HD
 
-    for (int b = 0; b < 780; b++) {
+    for (int b = 0; b < HEIGHT; b++) {
       HR_TOGGLE;                  //horizontal shift
       delayMicroseconds(1);       //t_R
       R_TOGGLE;                   //reset off
@@ -448,9 +465,7 @@ void grimg() {
       //delayMicroseconds(4);
       x++;
     }
-    for (x = 0; x < 780; x++) {
-      Serial.println(img[x]);
-    }
+    Serial.write((char*)img, HEIGHT * 2);
     x = 0;
   }
   if (POLL_ENDRUN) {
@@ -511,7 +526,12 @@ void setup() {
   digitalWrite(pinCLR, HIGH);
   digitalWrite(pinSCK, LOW);
   digitalWrite(pinCSLD, HIGH);
+  
+  analogReadResolution(10);
+  analogWriteResolution(10);
 
+  analogWrite(A2, 1023);
+  
   GPIOB_PDOR = 1; // Set ports B-E to outputs.
   GPIOC_PDOR = 1;
   GPIOD_PDOR = 1;
@@ -519,6 +539,8 @@ void setup() {
 
   // Setup operating variables.
   xsize = WIDTH; ysize = HEIGHT;
+  lace1 = HEIGHT / 2; lace2 = (HEIGHT / 2) + 1;
+  
   xoffs = yoffs = 0;
   xsec = 30;
   xmsec = 0;
@@ -540,16 +562,28 @@ void setup() {
   dac_programmer(0b100000, 11);   //DAC5 - 11v    9.8
   dac_programmer(0b1000000, 7.5); //DAC6 - 7.5v     1.7
   dac_programmer(0b10000000, 2);  //DAC7 - 2v   6.6
-
   GPIOC_PTOR = 0b100000;
   delay(300);
   GPIOC_PTOR = 0b100000;
 
 }
 
+float get_temp(){
+  float temp = analogRead(A0);
+  return temp;
+  }
+
+// Set the duty cycle for the TEC, where duty is out of 1023
+void set_temp(int duty){
+  analogWrite(A2, 1024 - duty);
+  pec_duty = duty;
+  }
+
 void loop() {
-  while (1) {
+  while(1){
+    if(temp_mon) Serial.println(get_temp());
     yield();
+    delay(5);
   }
 }
 

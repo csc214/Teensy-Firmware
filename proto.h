@@ -19,6 +19,8 @@
 #define YOFFSQ  120   // Returns y-offset of current AOI
 #define XBINQ   130   // Returns current x-bin value
 #define YBINQ   140   // Returns current y-bin value
+#define TEMPQ   145   // Returns current temp given by MCP9700
+#define TTEMPQ  147   // Returns current duty cycle for PEC
 
 #define XSEC    150   // Set exposure time seconds
 #define XMSEC   160   // Set exposure time milliseconds
@@ -28,6 +30,8 @@
 #define YOFFS   200   // Set y-offset of AOI
 #define XBIN    210   // Set the binning in the horizontal direction
 #define YBIN    220   // Set the binning in the vertical direction
+#define TTEMP   225   // Set target temperature
+#define MTEMP   227   // Monitor temperature
 
 #define EXPOSE  230   // Opens the shutter (metaphorically) and exposes sensor for XSEC + XMSEC
 #define FLUSH   240   // Scans entire CCD frame with BIN 8 to assure empty pixel wells
@@ -44,15 +48,15 @@
 #define HALT    " HALT\n"// Delimiter for pollendrun stop
 
 
-#define WIDTH  768 // Resolution for KAI-0370C
-#define HEIGHT 484
+#define WIDTH  780 // Resolution for KAI-0370C
+#define HEIGHT 495
 #define XPITCH  78 // Horizontal Pixel Pitch (px/mm)
 #define YPITCH  63 // Vertical Pixel Pitch (px/mm)
 #define CCDTYPE  2 // CCD Type for KAI-0370C
 
 #define VERSION  "0.0.1"
 
-#define NCOMMS 29  // Number of commands available
+#define NCOMMS 33  // Number of commands available
 
 typedef struct {
   String name;
