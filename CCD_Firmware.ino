@@ -370,7 +370,7 @@ void flusher() {
 
 void hshift(int flag){
     int x = 0;
-    H_TOGGLE;
+    H1_HIGH;
     for (int b = 0; b < WIDTH; b++) {
       HR_TOGGLE;                  //horizontal shift
       N50DELAY;                   //t_R
