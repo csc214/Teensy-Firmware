@@ -36,6 +36,7 @@
 #define EXPOSE  230   // Opens the shutter (metaphorically) and exposes sensor for XSEC + XMSEC
 #define FLUSH   240   // Scans entire CCD frame with BIN 8 to assure empty pixel wells
 #define GRIMG   250   // Acquire image pixels (~10us per pixel) in AOI specified above
+#define HSHIFT  255   // Run scanline forever.
 #define TEST    260   // Test function to verify comms, return 42
 
 #define THSHIFT 261   // Toggles horizontal register and reset
@@ -56,7 +57,7 @@
 
 #define VERSION  "0.0.1"
 
-#define NCOMMS 33  // Number of commands available
+#define NCOMMS 34  // Number of commands available
 
 typedef struct {
   String name;

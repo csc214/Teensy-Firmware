@@ -3,7 +3,7 @@
    GPIOx_PDDR - data direction reg
    GPIOx_PTOR - toggle output reg
 
-   when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds
+   when clocked to 192 MHz, 1 cycle is 5.21 nanoseconds **
 
     label     6   5  14   2   |   8  7
     actual   D4  D7  D1  D0   |  D3 D2
@@ -47,7 +47,7 @@ int xbin, ybin;                 // Binning vars
 int xsec, xmsec;                // Exposure vars
 int temp_mon = 0;               // Monitor temperature?
 int pec_duty = 0;
-int video = 38;
+int video = 16;
 const int pinIN = 24;
 const int pinSCK = 25;
 const int pinCSLD = 26;
@@ -85,6 +85,7 @@ comm_t comm_list[NCOMMS] = {{.name="XFRAME", .id=10},
                       {.name="EXPOSE", .id=230},
                       {.name="FLUSH",  .id=240},
                       {.name="GRIMG",  .id=250},
+                      {.name="HSHIFT", .id=255},
                       {.name="TEST",   .id=260},
                       {.name="THSHIFT",.id=261},
                       {.name="TVSHIFT",.id=262},
@@ -243,6 +244,9 @@ void handle_comms() {
     case GRIMG:
       grimg();
       break;
+    case HSHIFT:
+      while(!POLL_ENDRUN) grimg();
+      break;
     case DACOFF:
       dac_programmer(0b11111111, 0);
       //digitalWrite(pinCLR, LOW); //doesn't work well
@@ -327,113 +331,83 @@ void flusher() {
   V1_LOW;
   H1_HIGH;
   FT_LOW;
-
+  V_TOGGLE;
   delayMicroseconds(63);
   FT_TOGGLE;                      //even shift
   delayMicroseconds(17);          //t_VH
   FT_TOGGLE;
-  delayMicroseconds(126);         //arbitrary delay before shift
+  delayMicroseconds(381);         //arbitrary delay before shift
 
-  for (int c = 0; c < 248; c++) {
+  for (int c = 0; c < lace2; c++) {
     V_TOGGLE;                     //vertical shift
     delayMicroseconds(50);        //t_V
     V_TOGGLE;
     delayMicroseconds(10);        //t_HD
 
-    for (int b = 0; b < 780; b++) {
-      HR_TOGGLE;                  //horizontal shift
-      delayMicroseconds(1);       //t_R
-      R_TOGGLE;                   //reset off
-      delayMicroseconds(4);       // + t_R = tcd
-      H_TOGGLE;
-      delayMicroseconds(5);
-    }
-
-    if (POLL_ENDRUN) {
-      interrupts();
-      Serial.write(HALT);
-      V_TOGGLE;
-      return;
-    }
+    hshift(0);
   }
+
   V_TOGGLE;
   delayMicroseconds(63);
   FT_TOGGLE;                      //odd shift
   delayMicroseconds(17);          //t_VH
   FT_TOGGLE;
-  delayMicroseconds(63);          //arbitrary delay before shift
+  delayMicroseconds(381);          //arbitrary delay before shift
   V_TOGGLE;
-  delayMicroseconds(63);          //another arbitrary delay
-
-  for (int c = 0; c < 247; c++) {
-    V_TOGGLE;                     //vertical shift
-    delayMicroseconds(50);        //t_V
-    V_TOGGLE;
-    delayMicroseconds(10);        //t_HD
-
-    for (int b = 0; b < 780; b++) {
-      HR_TOGGLE;                  //horizontal shift
-      delayMicroseconds(1);       //t_R
-      R_TOGGLE;                   //reset off
-      delayMicroseconds(4);       // + t_R = tcd
-      H_TOGGLE;
-      delayMicroseconds(5);
-    }
-
-    if (POLL_ENDRUN) {
-      interrupts();
-      Serial.write(HALT);
-      V_TOGGLE;
-      return;
-    }
-  }
-  V_TOGGLE;
-  interrupts();
-}
-
-void grimg() {
-  noInterrupts();
-  R_LOW;                        //initial states
-  C_LOW;
-  V1_LOW;
-  H1_HIGH;
-  FT_LOW;
-  int x = 0;
-
-  delayMicroseconds(63);
-  FT_TOGGLE;                      //even shift
-  delayMicroseconds(17);          //t_VH
-  FT_TOGGLE;
-  delayMicroseconds(126);         //arbitrary delay before shift
-
+  delayMicroseconds(508);
+  
   for (int c = 0; c < lace1; c++) {
     V_TOGGLE;                     //vertical shift
     delayMicroseconds(50);        //t_V
     V_TOGGLE;
     delayMicroseconds(10);        //t_HD
 
-    for (int b = 0; b < HEIGHT; b++) {
+    hshift(0);
+  }
+  V_TOGGLE;
+  interrupts();
+}
+
+void hshift(int flag){
+    int x = 0;
+    H_TOGGLE;
+    for (int b = 0; b < WIDTH; b++) {
       HR_TOGGLE;                  //horizontal shift
-      delayMicroseconds(1);       //t_R
+      N50DELAY;                   //t_R
       R_TOGGLE;                   //reset off
-      delayMicroseconds(4);       // + t_R = tcd
+      NXDELAY(500);               // + t_R = tcd
       C_TOGGLE;
-      delayMicroseconds(1);       //t_C
+      NXDELAY(500);               //t_C
       C_TOGGLE;
       H_TOGGLE;
-      delayMicroseconds(2);       //t_sd
-      img[b] = c ^ b; //analogRead(video);
-      //delayMicroseconds(4);
+      NXDELAY(100);       //t_sd
+      if (flag)  img[x] = analogRead(video);
       x++;
     }//end row shifting
-    Serial.write((char*)img, HEIGHT * 2); // Twice the height because every pixel is a 16-bit number
-    if (POLL_ENDRUN){
-      interrupts();
-      Serial.write(HALT);
-      V_TOGGLE;
-      return;
-    }
     x = 0;
+    if (flag) Serial.write((char*)img, WIDTH * 2); // Twice the height because every pixel is a 16-bit number
+  }
+
+void grimg() {
+  noInterrupts();
+  flusher();
+  R_LOW;                        //initial states
+  C_LOW;
+  V1_LOW;
+  H1_HIGH;
+  FT_LOW;
+  V_TOGGLE;
+  delayMicroseconds(63);
+  FT_TOGGLE;                      //even shift
+  delayMicroseconds(17);          //t_VH
+  FT_TOGGLE;
+  delayMicroseconds(381);         //arbitrary delay before shift
+
+  for (int c = 0; c < lace2; c++) {
+    V_TOGGLE;
+    delayMicroseconds(5);        //t_V
+    V_TOGGLE;
+    hshift(1);
   }//end vertical shifting
 
   V_TOGGLE;
@@ -441,39 +415,16 @@ void grimg() {
   FT_TOGGLE;                      //odd shift
   delayMicroseconds(17);          //t_VH
   FT_TOGGLE;
-  delayMicroseconds(63);          //arbitrary delay before shift
+  delayMicroseconds(381);          //arbitrary delay before shift
   V_TOGGLE;
-  delayMicroseconds(63);          //another arbitrary delay
-    
+  delayMicroseconds(508);
+  
   for (int c = 0; c < lace1; c++) {
-    V_TOGGLE;                     //vertical shift
-    delayMicroseconds(50);        //t_V
     V_TOGGLE;
-    delayMicroseconds(10);        //t_HD
-
-    for (int b = 0; b < HEIGHT; b++) {
-      HR_TOGGLE;                  //horizontal shift
-      delayMicroseconds(1);       //t_R
-      R_TOGGLE;                   //reset off
-      delayMicroseconds(4);       // + t_R = tcd
-      C_TOGGLE;
-      delayMicroseconds(1);       //t_C
-      C_TOGGLE;
-      H_TOGGLE;
-      delayMicroseconds(2);       //t_sd
-      img[b] = c ^ b; //analogRead(video);
-      //delayMicroseconds(4);
-      x++;
+    delayMicroseconds(5);        //t_V
+    V_TOGGLE;
+    hshift(1);
     }
-    Serial.write((char*)img, HEIGHT * 2);
-    x = 0;
-  }
-  if (POLL_ENDRUN) {
-    interrupts();
-    Serial.write(HALT);
-    V_TOGGLE;
-    return;
-  }
   V_TOGGLE;
   interrupts();
 }
@@ -488,7 +439,7 @@ void dac_programmer(uint8_t chn, double val)
   t = t | num;
 
   char out[16];
-  Serial.println(itoa(t, out, 2));
+  //Serial.println(itoa(t, out, 2));
 
   digitalWrite(pinCSLD, LOW);
   for (long i = 15; i >= 0; i--)
@@ -527,8 +478,8 @@ void setup() {
   digitalWrite(pinSCK, LOW);
   digitalWrite(pinCSLD, HIGH);
   
-  analogReadResolution(10);
-  analogWriteResolution(10);
+  analogReadResolution(12);
+  analogWriteResolution(12);
 
   analogWrite(A2, 1023);
   
@@ -554,14 +505,14 @@ void setup() {
 
   analogWrite(A21, 155);
   analogWrite(A22, 217);
-  dac_programmer(0b1, 9);         //DAC0 - 9v     reads 8
-  dac_programmer(0b10, 8);        //DAC1 - 8v     7.1
-  dac_programmer(0b100, 3);       //DAC2 - 3v     2.6
-  dac_programmer(0b1000, 8.5);    //DAC3 - 8.5v   reads7.5
-  dac_programmer(0b10000, 4);     //DAC4 - 4v     3.5
-  dac_programmer(0b100000, 11);   //DAC5 - 11v    9.8
-  dac_programmer(0b1000000, 7.5); //DAC6 - 7.5v     1.7
-  dac_programmer(0b10000000, 2);  //DAC7 - 2v   6.6
+  dac_programmer(0b1, 10.08);         //DAC0 - 9v     reads 8
+  dac_programmer(0b10, 8.91);        //DAC1 - 8v     7.1
+  dac_programmer(0b100, 3.5);       //DAC2 - 3v     2.6
+  dac_programmer(0b1000, 9.42);    //DAC3 - 8.5v   reads7.5
+  dac_programmer(0b10000, 4.60);     //DAC4 - 4v     3.5
+  dac_programmer(0b100000, 11.75);   //DAC5 - 11v    9.8
+  dac_programmer(0b1000000, 8.35); //DAC6 - 7.5v     1.7
+  dac_programmer(0b10000000, 2.35);  //DAC7 - 2v   6.6
   GPIOC_PTOR = 0b100000;
   delay(300);
   GPIOC_PTOR = 0b100000;
