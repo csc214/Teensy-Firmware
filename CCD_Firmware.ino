@@ -481,7 +481,7 @@ void setup() {
   analogReadResolution(12);
   analogWriteResolution(12);
 
-  analogWrite(A2, 1023);
+  analogWrite(A3, 1023);
   
   GPIOB_PDOR = 1; // Set ports B-E to outputs.
   GPIOC_PDOR = 1;
@@ -526,7 +526,7 @@ float get_temp(){
 
 // Set the duty cycle for the TEC, where duty is out of 1023
 void set_temp(int duty){
-  analogWrite(A2, 1024 - duty);
+  analogWrite(A3, 1024 - duty);
   pec_duty = duty;
   }
 
