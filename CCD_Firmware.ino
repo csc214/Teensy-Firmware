@@ -114,6 +114,7 @@ void handle_comms() {
 
   for (int i = 0; i < NCOMMS; i++) {
     // When comparing a ``String`` to a ``char*`` put the string first to use the compare operator (``==``)
+    for (int j = 0; input_string[j]; j++) input_string[j] = toupper(input_string[j]);
     if (comm_list[i].name == input_string) {
       comm_id = comm_list[i].id;
       break;
@@ -312,7 +313,6 @@ void tvshift() {
 }
 
 void expose() {
-  flusher();
   noInterrupts();
   GPIOD_PSOR |= 0b100; //v1 low
   int xtime = (xsec * 1000) + xmsec;
@@ -320,7 +320,6 @@ void expose() {
     delayMicroseconds(1000);
     xtime -= 1;
   }
-  grimg();
   interrupts();
 }
 
@@ -391,6 +390,7 @@ void hshift(int flag){
 void grimg() {
   noInterrupts();
   flusher();
+  expose();
   R_LOW;                        //initial states
   C_LOW;
   V1_LOW;
@@ -456,7 +456,6 @@ void dac_programmer(uint8_t chn, double val)
 
 void setup() {
   Serial.begin(115200);
-  delay(3000);
   pinMode(13, OUTPUT); // On-board LED
 
   pinMode(6,  OUTPUT); // H_CTL, D3
@@ -524,9 +523,9 @@ float get_temp(){
   return temp;
   }
 
-// Set the duty cycle for the TEC, where duty is out of 1023
+// Set the duty cycle for the PEC, where duty is out of 1023
 void set_temp(int duty){
-  analogWrite(A3, 1024 - duty);
+  analogWrite(A3, 1023 - duty);
   pec_duty = duty;
   }
 
